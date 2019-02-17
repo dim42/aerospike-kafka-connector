@@ -3,7 +3,7 @@
 
   <groupId>com.aerospike</groupId>
   <artifactId>aerospike-kafka-connector</artifactId>
-  <version>0.0.4-SNAPSHOT</version>
+  <version>0.0.5-SNAPSHOT</version>
   <name>Aerospike Kafka Connector</name>
   <description>Aerospike Connector for Kafka Connect</description>
   <url>https://github.com/aerospike/aerospike-kafka-connector</url>
@@ -21,6 +21,8 @@
     <log4j.configuration>config/log4j.properties</log4j.configuration>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <aerospike.version>4.3.0</aerospike.version>
+    <kafka.version>2.1.1</kafka.version>
   </properties>
 
   <licenses>
@@ -54,23 +56,23 @@
     <dependency>
       <groupId>com.aerospike</groupId>
       <artifactId>aerospike-client</artifactId>
-      <version>3.2.4</version>
+      <version>${aerospike.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.kafka</groupId>
       <artifactId>connect-api</artifactId>
-      <version>0.10.0.1</version>
+      <version>${kafka.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.kafka</groupId>
       <artifactId>connect-json</artifactId>
-      <version>0.10.0.1</version>
+      <version>${kafka.version}</version>
       <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.kafka</groupId>
       <artifactId>connect-runtime</artifactId>
-      <version>0.10.0.1</version>
+      <version>${kafka.version}</version>
       <scope>runtime</scope>
     </dependency>
     <dependency>

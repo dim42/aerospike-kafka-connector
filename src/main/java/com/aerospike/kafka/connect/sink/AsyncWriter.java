@@ -16,28 +16,31 @@
  */
 package com.aerospike.kafka.connect.sink;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-
-import org.apache.kafka.connect.errors.ConnectException;
-import org.apache.kafka.connect.errors.RetriableException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.AerospikeException;
-import com.aerospike.client.AerospikeException.CommandRejected;
+import com.aerospike.client.AerospikeException.AsyncQueueFull;
 import com.aerospike.client.AerospikeException.Connection;
 import com.aerospike.client.AerospikeException.Timeout;
 import com.aerospike.client.Bin;
 import com.aerospike.client.Host;
 import com.aerospike.client.Key;
-import com.aerospike.client.async.AsyncClient;
-import com.aerospike.client.async.AsyncClientPolicy;
+import com.aerospike.client.async.EventLoop;
+import com.aerospike.client.async.EventLoops;
+import com.aerospike.client.async.EventPolicy;
+import com.aerospike.client.async.NioEventLoops;
 import com.aerospike.client.listener.WriteListener;
+import com.aerospike.client.policy.ClientPolicy;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import com.aerospike.kafka.connect.data.AerospikeRecord;
+import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.errors.RetriableException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The AsyncWriter handles connections to the Aerospike cluster, sending data
@@ -49,7 +52,8 @@ public class AsyncWriter {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncWriter.class);
 
-    private final AsyncClient client;
+    private final AerospikeClient client;
+    private final EventLoops eventLoops;
     private final WritePolicy writePolicy;
     private final Counter inFlight;
     private final ResultListener listener;
@@ -57,8 +61,10 @@ public class AsyncWriter {
     public AsyncWriter(ConnectorConfig config) {
         try {
             Host[] hosts = config.getHosts();
-            AsyncClientPolicy policy = createClientPolicy(config);
-            client = new AsyncClient(policy, hosts);
+            ClientPolicy policy = createClientPolicy(config);
+            eventLoops = createEventLoops();
+            policy.eventLoops = eventLoops;
+            client = new AerospikeClient(policy, hosts);
             inFlight = new Counter();
             listener = new ResultListener(inFlight);
         } catch (AerospikeException e) {
@@ -67,27 +73,47 @@ public class AsyncWriter {
         writePolicy = createWritePolicy(config);
     }
 
+    private NioEventLoops createEventLoops() {
+        NioEventLoops eventLoops;
+        EventPolicy eventPolicy = new EventPolicy();
+//        eventPolicy.maxCommandsInProcess = config.getMaxAsyncCommands();
+        int eventLoopSize = 4;
+        // Direct NIO
+        eventLoops = new NioEventLoops(eventPolicy, eventLoopSize);
+
+        // Netty NIO
+        // EventLoopGroup group = new NioEventLoopGroup(eventLoopSize);
+        // eventLoops = new NettyEventLoops(eventPolicy, group);
+
+        // Netty epoll (Linux only)
+        // EventLoopGroup group = new EpollEventLoopGroup(eventLoopSize);
+        // eventLoops = new NettyEventLoops(eventPolicy, group);
+        return eventLoops;
+    }
+
     public void write(AerospikeRecord record) {
         listener.raiseErrors();
         Key key = record.key();
         Bin[] bins = record.bins();
         inFlight.increment();
-        client.put(writePolicy, listener, key, bins);
+        EventLoop eventLoop = eventLoops.next();
+        client.put(eventLoop, listener, writePolicy, key, bins);
     }
 
     public void flush() {
         listener.raiseErrors();
         inFlight.waitUntilZero();
     }
-    
+
     public void close() {
         client.close();
     }
 
-    private AsyncClientPolicy createClientPolicy(ConnectorConfig config) {
-        AsyncClientPolicy policy = new AsyncClientPolicy();
-        policy.asyncMaxCommands = config.getMaxAsyncCommands();
-        policy.asyncMaxCommandAction = config.getMaxCommandAction();
+    private ClientPolicy createClientPolicy(ConnectorConfig config) {
+//        AsyncClientPolicy policy = new AsyncClientPolicy();
+        ClientPolicy policy = new ClientPolicy();
+//        policy.asyncMaxCommands = config.getMaxAsyncCommands();
+//        policy.asyncMaxCommandAction = config.getMaxCommandAction();
         return policy;
     }
 
@@ -100,22 +126,22 @@ public class AsyncWriter {
         log.trace("Write Policy: recordExistsAction={}", policy.recordExistsAction);
         return policy;
     }
-    
+
     /*
      * Write listener implementation to track when asynchronous DB commands have
      * been completed and to record any errors raised by the commands.
      */
     class ResultListener implements WriteListener {
-        
+
         private final Counter counter;
         private final AtomicBoolean retry = new AtomicBoolean(true);
         private final AtomicInteger exceptions = new AtomicInteger(0);
         private final AtomicReference<Throwable> exception = new AtomicReference<>();
-        
+
         public ResultListener(Counter counter) {
             this.counter = counter;
         }
-        
+
         public void raiseErrors() throws ConnectException {
             Throwable error = exception.get();
             if (error == null) {
@@ -143,14 +169,11 @@ public class AsyncWriter {
             log.trace("Successfully put key {}", key);
             counter.decrement();
         }
-        
+
         private boolean retriable(AerospikeException e) {
-            if (e instanceof CommandRejected
+            return e instanceof AsyncQueueFull
                     || e instanceof Timeout
-                    || e instanceof Connection) {
-                return true;
-            }
-            return false;
+                    || e instanceof Connection;
         }
     }
 
@@ -172,11 +195,11 @@ public class AsyncWriter {
             this.sleepMs = sleepMs;
             counter = new AtomicInteger(0);
         }
-        
+
         public void increment() {
             counter.incrementAndGet();
         }
-        
+
         public void decrement() {
             counter.decrementAndGet();
         }

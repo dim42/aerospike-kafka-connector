@@ -29,7 +29,6 @@ import org.apache.kafka.common.config.ConfigDef.Validator;
 import org.apache.kafka.common.config.ConfigException;
 
 import com.aerospike.client.Host;
-import com.aerospike.client.async.MaxCommandAction;
 import com.aerospike.client.policy.RecordExistsAction;
 
 public class ConnectorConfig extends AbstractConfig {
@@ -105,20 +104,20 @@ public class ConnectorConfig extends AbstractConfig {
         return getInt(MAX_ASYNC_COMMANDS_CONFIG);
     }
 
-    public MaxCommandAction getMaxCommandAction() {
-        String action = getString(MAX_COMMAND_ACTION_CONFIG);
-        switch (action) {
-        case "accept":
-            return MaxCommandAction.ACCEPT;
-        case "block":
-            return MaxCommandAction.BLOCK;
-        case "reject":
-            return MaxCommandAction.REJECT;
-        default:
-            // This should never happen if the configuration passes validation!
-            throw new ConfigException(MAX_COMMAND_ACTION_CONFIG, action, "Unsupported policy value.");
-        }
-    }
+//    public MaxCommandAction getMaxCommandAction() {
+//        String action = getString(MAX_COMMAND_ACTION_CONFIG);
+//        switch (action) {
+//        case "accept":
+//            return MaxCommandAction.ACCEPT;
+//        case "block":
+//            return MaxCommandAction.BLOCK;
+//        case "reject":
+//            return MaxCommandAction.REJECT;
+//        default:
+//            // This should never happen if the configuration passes validation!
+//            throw new ConfigException(MAX_COMMAND_ACTION_CONFIG, action, "Unsupported policy value.");
+//        }
+//    }
 
     public Map<String, TopicConfig> getTopicConfigs() {
         Map<String, TopicConfig> topicConfigs = new HashMap<>();
